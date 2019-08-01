@@ -1,85 +1,52 @@
-﻿
-var obj = {
-    user: {
-        id: 56,
-        username: "guebli.med",
-        email: "guebli.med@gmail.com"
-    },
 
-    descriptif: "It's a publication",
 
-    medias: [
+let data = {
+
+    users: [
+
         {
-            id: 55,
-            url: "/api/medias/1",
-            tags: [
-                {
-                    id: 1,
-                    name: "tag1"
-                },
-                {
-                    id: 2,
-                    name: "tag2"
-                }
-            ]
+            username: "GUEBLI",
+            photos: ["https://loremflickr.com/100/100/14", "https://loremflickr.com/100/100/5", "https://loremflickr.com/100/100/6", "https://loremflickr.com/100/100/75"]
         },
+
         {
-            id: 60,
-            url: "/api/medias/2",
-            tags: [
-                {
-                    id: 1,
-                    name: "tag1",
-                    keywords: ["tard", "noob"]
-                },
-                {
-                    id: 2,
-                    name: "tag2",
-                    keywords: ["tt", "zz"]
-                },
-            ]
-        },
-        {
-            id: 58,
-            url: "/api/medias/3",
-            tags: [
-                {
-                    id: 1,
-                    name: "tag1"
-                },
-                {
-                    id: 2,
-                    name: "tag2"
-                }
-            ]
+            username: "LAUBACHER"
         }
+
     ]
+
 };
 
+window.onload = function () {
 
-var mappers = {
-    name: (obj) => {
-        return "Are you retard";
-    }
-};
+    let element = document.getElementById("model");
+    let mappedElement = Mapper.map(element, data);
 
+    document.body.append(mappedElement);
 
-window.onload = () => {
-    Mapper.map($(".medias-test")[0], obj, mappers);
-};
+    element.remove();
+}
 
 
 
 /**
     Mapper - used to map json object to a view
- */
+*/
 class Mapper {
-    public static map(element: HTMLElement, obj: any, mappers: any): void {
-        let instructions: Array<Instruction> = new InstructionsBuilder().build(element, obj, mappers);
+
+    public static map(element: HTMLElement, obj: any, mappers?: any): HTMLElement {
+        if (!element || !obj)
+            return;
+
+        let instructionsBuilder = new InstructionsBuilder();
+
+        let instructions = instructionsBuilder.build(element, obj, mappers);
 
         instructions.forEach((instr) => {
             instr.setup();
         });
+
+        return instructionsBuilder.getMappedElement();
     }
 }
 
@@ -89,11 +56,13 @@ class Mapper {
  */
 class InstructionsBuilder {
 
-    private _instructions: Array<Instruction> = null;
+    private instructions: Array<Instruction> = null;
     private _element: HTMLElement = null;
+    private _clone: HTMLElement = null;
+    private _mappedElements: Array<HTMLElement> = null;
+
     private _data: any = null;
     private _mappers: any = null;
-
     private _ni: NodeInspecter = null;
 
 
@@ -103,56 +72,116 @@ class InstructionsBuilder {
      * @param data
      * @param mappers
      */
-    public build(element: HTMLElement, data: any, mappers: any): Array<Instruction> {
-        this._instructions = [];
+    public build(element: HTMLElement, data: any, mappers?: any): Array<Instruction> {
+        this.instructions = [];
         this._element = element;
+        this._clone = this._element.cloneNode(true) as HTMLElement;
+
         this._data = data;
         this._mappers = mappers;
         this._ni = new NodeInspecter();
 
-        this.buildInstructions(this._element.childNodes);
+        /*
+            If this element is a loop
+            Create a new LoopInstruction based on a cloned version of this element
 
-        console.log(this._instructions);
+            Check whether this element is also an attribute, then build its attributes for [loop.instructions]
 
-        return this._instructions;
+            Set mappedElements loop's mapped elements
+        */
+        if (this._ni.isLoop(element)) {
+            let loop = new LoopInstruction(this._clone, this._data);
+            this.buildLoopInstructions(this._clone.childNodes, loop, true);
+        }
+
+        /**
+            If element has an If Statement
+            TODO!
+        */
+
+        else if (this._ni.hasIfStatement(this._clone)) {
+            let ifStatement = new IfStatementInstruction(this._clone, this._data);
+            this.buildIfStatementInstructions(this._clone.childNodes, ifStatement, true);
+        }
+        /**
+            Build instructions of this element if it's not a loop or an if statement
+        */
+        else {
+            this.buildInstructions(this._clone.childNodes);
+        }
+
+
+        /**
+            If this element has attributes build its attribtues
+        */
+        if (this._ni.isAttribute(this._clone)) {
+            this.instructions.push(this._ni.buildAttributeInstruction(this._clone, this._data));
+        }
+
+        return this.instructions;
     }
 
 
+    /**
+        Get mapped element;
+     */
+    public getMappedElement(): HTMLElement {
+        return this._clone;
+    }
+
+
+    /**
+     * Build instructions - Recursive function
+     * @param nodes
+     */
     private buildInstructions(nodes: NodeList): void {
 
         for (var i = 0; i < nodes.length; i++) {
             let node = nodes.item(i);
 
             if (node.nodeType == Node.TEXT_NODE) {
-                if (node.nodeValue.match(NodeInspecter.STR_INTERPO_REG_EXP)) {
-                    this._instructions.push(new NodeStringInterpolation(node, this._data));
-                }
+
+                if (node.nodeValue.match(NodeInspecter.STR_INTERPO_REG_EXP))
+                    this.instructions.push(new NodeStringInterpolation(node, this._data));
+
             }
+
             else if (node instanceof HTMLElement) {
 
-                if (this._ni.isLoop(node)) {
+                if (this._ni.hasIfStatement(node)) {
+                    let ifStatement = new IfStatementInstruction(node, this._data);
+
+                    if (this._ni.isAttribute(node))
+                        ifStatement.attribute = this._ni.buildAttributeInstruction(node, this._data);
+
+                    this.buildIfStatementInstructions(node.childNodes, ifStatement, true);
+                }
+
+                else if (this._ni.isLoop(node)) {
                     let loop = new LoopInstruction(node, this._data);
 
-                    if (this._ni.isAttribute(node)) {
-
-                        let attrs: Array<AttributeInstruction> = [];
-                        this._ni.findAttributeInstructions(node, attrs);
-
-                        attrs.forEach((attr) => {
-                            loop.addAttribute(attr);
-                        });
-                    }
+                    if (this._ni.isAttribute(node))
+                        loop.attribute = this._ni.buildAttributeInstruction(node, this._data);
 
                     this.buildLoopInstructions(node.childNodes, loop, true);
                 }
-                else if (this._ni.isAttribute(node)) {
-                    this._ni.findAttributeInstructions(node, this._instructions, this._data);
-                }
-                else if (node.childElementCount == 0 && node.textContent.match(NodeInspecter.STR_INTERPO_REG_EXP)) {
-                    this._instructions.push(new ElementStringInterpolation(node, this._data));
-                }
-                else {
+
+                else if (node.childElementCount > 0) {
                     this.buildInstructions(node.childNodes);
+                }
+
+
+                if (this._ni.isElementString(node)) {
+                    let instr = new ElementStringInterpolation(node, this._data);
+                    this.instructions.push(instr);
+
+                    if (this._ni.isAttribute(node))
+                        instr.attribute = this._ni.buildAttributeInstruction(node, this._data);
+                }
+
+
+                if (this._ni.isAttribute(node)) {
+                    this.instructions.push(this._ni.buildAttributeInstruction(node, this._data));
                 }
             }
         }
@@ -167,52 +196,199 @@ class InstructionsBuilder {
      */
     private buildLoopInstructions(nodes: NodeList, loop: LoopInstruction, isParent: boolean = false): void {
 
+        /**
+            Loop through all the NodeList
+        */
+
         for (var i = 0; i < nodes.length; i++) {
 
             let node = nodes.item(i);
 
-
+            /**
+                If node is of type TEXT_NODE
+            */
             if (node.nodeType == Node.TEXT_NODE) {
                 if (node.nodeValue.match(NodeInspecter.STR_INTERPO_REG_EXP)) {
                     loop.addInstruction(new NodeStringInterpolation(node));
                 }
             }
+
+            /** 
+                If node is an HTMLElement
+            */
             else if (node instanceof HTMLElement) {
-                if (this._ni.isLoop(node)) {
-                    let childLoop = <LoopInstruction>loop.addInstruction(new LoopInstruction(node));
 
-                    if (this._ni.isAttribute(node)) {
+                /**
+                    If node is an if statement
+                    Create a new IfStatementInstruction and it to the loop's instructions
+                    Build attributes for this node
+                    Build instructions for this IfStatemen
+                */
+                if (this._ni.hasIfStatement(node)) {
+                    let ifStatement = new IfStatementInstruction(node);
+                    loop.addInstruction(ifStatement);
 
-                        let attrs: Array<AttributeInstruction> = [];
+                    if (this._ni.isAttribute(node))
+                        ifStatement.attribute = this._ni.buildAttributeInstruction(node, this._data);
 
-                        this._ni.findAttributeInstructions(node, attrs);
-                        attrs.forEach((attr) => {
-                            childLoop.addAttribute(attr);
-                        });
-                    }
-
-                    this.buildLoopInstructions(node.childNodes, childLoop, false);
+                    this.buildIfStatementInstructions(node.childNodes, ifStatement);
                 }
-                else if (this._ni.isAttribute(node) && !this._ni.isLoop(node)) {
-                    let attrs: Array<AttributeInstruction> = [];
 
-                    this._ni.findAttributeInstructions(node, attrs);
-                    attrs.forEach((attr) => {
-                        loop.addInstruction(attr);
-                    });
+                /**
+                    If node is a loop
+                    create a new Loop instruction (child loop)
+                    And add it to the current loop (loop)
+                    Build attributes for this child loop
+                    Build loop instructions for this child loop
+                */
+                else if (this._ni.isLoop(node)) {
+                    let childLoop = new LoopInstruction(node);
+                    loop.addInstruction(childLoop);
+
+                    if (this._ni.isAttribute(node))
+                        childLoop.attribute = this._ni.buildAttributeInstruction(node, this._data);
+
+                    this.buildLoopInstructions(node.childNodes, childLoop);
                 }
+
+                /**
+                    If this node doesn't have child elements && its content is a string interpolation expression
+                    Create a new ElementStringInterpolation for this node
+                    Add it to the loop's instructions
+                    Build attributes for this instruction
+                */
                 else if (node.childElementCount == 0 && node.textContent.match(NodeInspecter.STR_INTERPO_REG_EXP)) {
-                    loop.addInstruction(new ElementStringInterpolation(node));
+                    let instr = new ElementStringInterpolation(node);
+                    loop.addInstruction(instr);
+
+                    if (this._ni.isAttribute(node))
+                        instr.attribute = this._ni.buildAttributeInstruction(node, this._data);
                 }
-                else {
+
+
+                /**
+                    If this node represents an Attribute
+                    Build attributes for this node
+                */
+                else if (this._ni.isAttribute(node)) {
+                    let attribute = this._ni.buildAttributeInstruction(node, this._data);
+                    loop.instructions.push(attribute);
+                }
+
+
+                /**
+                    If this node has children 
+                    Run buildLoopInstructions for these children
+                */
+                if (node.childElementCount > 0 && !this._ni.isLoop(node) && !this._ni.hasIfStatement(node)) {
                     this.buildLoopInstructions(node.childNodes, loop);
                 }
             }
         }
 
+        /**
+            If this loop is a parent
+            Add it to Instructions
+        */
         if (isParent)
-            this._instructions.push(loop);
+            this.instructions.push(loop);
     }
+
+
+    /**
+     * Build IfStatement instructions
+     * @param nodes
+     */
+    private buildIfStatementInstructions(nodes: NodeList, ifStatement: IfStatementInstruction, isParent: boolean = false): void {
+
+        /**
+            Loop through all nodes
+        */
+
+        for (var i = 0; i < nodes.length; i++) {
+            let node = nodes.item(i);
+
+
+            /**
+                if node is a TEXT, create a new NodeStringInterpolation
+            */
+            if (node.nodeType == Node.TEXT_NODE) {
+                if (node.nodeValue.match(NodeInspecter.STR_INTERPO_REG_EXP))
+                    ifStatement.addInstruction(new NodeStringInterpolation(node));
+            }
+
+            /**
+                If node is an HTMLElement
+            */
+            else if (node instanceof HTMLElement) {
+
+
+                if (this._ni.hasIfStatement(node)) {
+
+                    let childIfStatement = new IfStatementInstruction(node);
+                    ifStatement.addInstruction(childIfStatement);
+
+                    if (this._ni.isAttribute(node))
+                        childIfStatement.attribute = this._ni.buildAttributeInstruction(node, this._data);
+
+                    if (this._ni.isLoop(node)) {
+                        let loop = new LoopInstruction(node, node.parentElement);
+                        childIfStatement.addInstruction(loop);
+                        this.buildLoopInstructions(node.childNodes, loop);
+                    }
+
+                    this.buildIfStatementInstructions(node.childNodes, childIfStatement);
+                }
+
+                else if (this._ni.isLoop(node)) {
+                    let loop = new LoopInstruction(node, node.parentElement);
+                    ifStatement.addInstruction(loop);
+
+                    if (this._ni.isAttribute(node))
+                        loop.attribute = this._ni.buildAttributeInstruction(node, this._data);
+
+                    this.buildLoopInstructions(node.childNodes, loop);
+                }
+                else if (node.childElementCount == 0 && node.textContent.match(NodeInspecter.STR_INTERPO_REG_EXP)) {
+                    let instr = new ElementStringInterpolation(node);
+                    ifStatement.addInstruction(instr);
+
+                    if (this._ni.isAttribute(node))
+                        instr.attribute = this._ni.buildAttributeInstruction(node, this._data);
+                }
+
+
+                else if (this._ni.isAttribute(node)) {
+
+                    let attribute = this._ni.buildAttributeInstruction(node, this._data);
+                    ifStatement.instructions.push(this._ni.buildAttributeInstruction(node, this._data));
+                }
+
+
+                if (node.childElementCount > 0 && !this._ni.isLoop(node) && !this._ni.hasIfStatement(node)) {
+                    this.buildIfStatementInstructions(node.childNodes, ifStatement);
+                }
+            }
+        }
+
+        if (isParent)
+            this.instructions.push(ifStatement);
+    }
+
+    ///**
+    // * Build attributes for loop || if statement
+    // * @param node
+    // * @param loop
+    // */
+    //private buildAttributesForInstruction(node: Node, array: Array<Instruction>, data?: any): void {
+    //    let attrs: Array<AttributeInstruction> = [];
+
+    //    this._ni.findAttributeInstructions(node, attrs, data);
+
+    //    attrs.forEach((attr) => {
+    //        array.push(attr);
+    //    });
+    //}
 }
 
 
@@ -224,12 +400,13 @@ class InstructionsBuilder {
 abstract class Instruction {
 
     protected _data: any;
-    protected _mapped: boolean = false;
     protected _value: string = null;
-    protected _ifStatement: IfStatement = null;
+
+    protected nodeClone: Node = null;
 
     constructor(public node: Node, data?: any) {
         this._data = data;
+        this.nodeClone = node.cloneNode(true);
     }
 
     /**
@@ -248,26 +425,60 @@ abstract class Instruction {
     }
 
     /**
-     * Set mapped
-     * @param bool
-     */
-    public set mapped(bool: boolean) {
-        this._mapped = bool;
+     * Get node clone
+     * */
+    public getNodeClone(): Node {
+        return this.nodeClone;
     }
 
     /**
-    * Get mapped
+    * Find a specific node
+    * @param nodes
+    * @param target
     */
-    public get mapped(): boolean {
-        return this._mapped;
+
+    protected findNodeString(elem: HTMLElement, target: Node): Node {
+        let res: Node = null;
+
+        function find(elem: HTMLElement, target: Node) {
+            for (var i = 0; i < elem.childNodes.length; i++) {
+                let node = elem.childNodes.item(i);
+
+                if (node.isEqualNode(target)) {
+                    res = node;
+                    break;
+                }
+
+                if (node instanceof HTMLElement)
+                    find(node, target);
+            }
+        };
+
+        find(elem, target);
+
+        return res;
     }
 
+
     /**
-     * Set if statement
-     * @param ifStatement
+     * Find a specific element
+     * @param elems
+     * @param target
      */
-    public setIfStatement(ifStatement: IfStatement): void {
-        this._ifStatement = ifStatement;
+    protected findElement(container: HTMLElement, target: HTMLElement): HTMLElement {
+        if (container.isEqualNode(target))
+            return container;
+
+        let elems = container.querySelectorAll("*");
+
+        for (var i = 0; i < elems.length; i++) {
+            let elem = <HTMLElement>elems.item(i);
+
+            if (elem.isEqualNode(target)) {
+                return elem;
+            }
+        }
+        return null;
     }
 
     /**
@@ -279,33 +490,67 @@ abstract class Instruction {
     }
 
     /** Setup instruction*/
-    public abstract setup(): void;
+    public abstract setup(node?: Node): void;
+
 
 
     /**
-     * Find value for a specific expression(expression is represented as an array of its segments)
-     * @param segments
+        Prepare data environement
+     */
+    protected prepareDataEnvironment(data: any): { params: string, values: any } {
+        let params = [];
+        let values = [];
+
+
+        for (var key in data) {
+            params.push(key);
+
+            let pData = data[key];
+            let value = null;
+
+            if (typeof pData == 'object')
+                value = JSON.stringify(pData);
+            else if (typeof pData == 'string')
+                value = "`" + pData + "`";
+            else if (typeof pData == 'number')
+                value = pData;
+
+            values.push(value);
+        }
+
+        return {
+            params: params.join(", "),
+            values: values.join(", ")
+        };
+
+    }
+
+
+    /**
+     * Execute a statement to get the returned value
+     * @param statement
      * @param data
      * @param index
      */
-    protected findValue(segments: Array<string>, data: any, index: number = 0): any {
+    public findValue(statement: string, data: any, index: number = 0): any {
+        let dataEnv = this.prepareDataEnvironment(data);
+        let func = "(function(" + dataEnv.params + "){ return " + statement + " })(" + dataEnv.values + ");";
 
-        if (segments[index] == undefined || data[segments[index]] == undefined)
-            return undefined;
+        try {
+            let value = eval(func);
 
-        let value = data[segments[index]];
+            if (typeof value == 'object' || typeof value == "string")
+                return value;
+            else if (typeof value == 'number') {
+                return +value;
+            }
+            else {
+                return undefined;
+            }
 
-        if (typeof value == 'object')
-            return this.findValue(segments, value, ++index);
-
-        else if (typeof value == 'string')
-            return value;
-
-        else if (typeof value == 'number')
-            return +value;
-
-        else if (typeof value == 'undefined')
-            return undefined;
+        } catch (ex) {
+            console.log(ex);
+        }
     };
 
     /**
@@ -314,22 +559,24 @@ abstract class Instruction {
      * @param data
      * @param index
      */
-    protected findArray(segments: Array<string>, data: any, index: number = 0): Array<any> {
+    protected findArray(statement: string, data: any): Array<any> {
 
-        if (segments[index] == undefined || data[segments[index]] == undefined)
+        let dataEnv = this.prepareDataEnvironment(data);
+        let func = "(function(" + dataEnv.params + "){ return " + statement + " })(" + dataEnv.values + ");";
+
+        try {
+            let array = eval(func);
+
+            if (Array.isArray(array)) {
+                return array;
+            }
+
             return undefined;
-
-        let value = data[segments[index]];
-
-
-        if (typeof value == 'object' && !Array.isArray(value))
-            return this.findArray(segments, value, ++index);
-
-        else if (Array.isArray(value))
-            return value;
-
-        else
-            return undefined;
+        }
+        catch{
+            if (dataEnv.params == "")
+                console.error(func);
+        }
     };
 
 
@@ -337,7 +584,7 @@ abstract class Instruction {
      * Init expressions
      * @param index
      */
-    protected initStringInterpolationExpressions(value: string, expressions: Array<IStringInterpolationExpression>, index: number = 0): void {
+    public initStringInterpolationExpressions(value: string, expressions: Array<IStringInterpolationInstruction>, index: number = 0): void {
         let startIndex = value.indexOf("{{", index);
         let endIndex = value.indexOf("}}", startIndex) + 2;
 
@@ -345,7 +592,7 @@ abstract class Instruction {
             return;
 
         expressions.push({
-            expression: value.substr(startIndex, (endIndex - startIndex)),
+            instruction: value.substr(startIndex, (endIndex - startIndex)),
             value: null
         });
 
@@ -358,43 +605,43 @@ abstract class Instruction {
     String Interpolation 
  */
 
-interface IStringInterpolationExpression {
-    expression: string,
+interface IStringInterpolationInstruction {
+    instruction: string,
     value: any
 }
 
 abstract class StringInterpolationInstruction extends Instruction {
 
-    protected _expressions: Array<IStringInterpolationExpression> = [];
+    protected expressions: Array<IStringInterpolationInstruction> = [];
 
     constructor(node: Node, data?: any) {
         super(node, data);
     };
 
-
     /**
         Setup instruction
      */
-    public setup(node?: Node): void {
+    public setup(): void {
 
-        this._expressions.forEach((expr) => {
-            let segments = expr.expression.replace("{{", "").replace("}}", "").split(".");
+        this.expressions.forEach((expr) => {
+            let instruction = expr.instruction.replace("{{", "").replace("}}", "");
 
-            expr.value = this.findValue(segments, this._data);
+            expr.value = this.findValue(instruction, this._data);
         });
 
-        this.map(node);
+        this.map();
     };
 
     /**
      * Map instruction
      * @param node
      */
-    private map(node?: Node): void {
-        let n: Node = node ? node : this.node;
-
-        this._expressions.forEach((exp) => {
-            n.textContent = n.textContent.replace(exp.expression, exp.value);
+    protected map(): void {
+        this.expressions.forEach((exp) => {
+            if (this.node instanceof HTMLElement)
+                this.node.innerHTML = this.node.innerHTML.replace(exp.instruction, exp.value);
+            else
+                this.node.textContent = this.node.textContent.replace(exp.instruction, exp.value);
         });
     }
 }
@@ -408,7 +655,7 @@ class NodeStringInterpolation extends StringInterpolationInstruction {
         super(node, data);
 
         this._value = this.node.textContent.trim();
-        this.initStringInterpolationExpressions(this._value, this._expressions);
+        this.initStringInterpolationExpressions(this._value, this.expressions);
     }
 }
 
@@ -417,12 +664,44 @@ class NodeStringInterpolation extends StringInterpolationInstruction {
  */
 class ElementStringInterpolation extends StringInterpolationInstruction {
 
+
+    public attribute: AttributeInstruction = null;
+
     constructor(node: Node, data?: any) {
         super(node, data);
 
         this._value = this.node.textContent.trim();
-        this.initStringInterpolationExpressions(this._value, this._expressions);
+        this.initStringInterpolationExpressions(this._value, this.expressions);
     }
+
+    /**
+     * Add attribute to element
+     * @param attr
+     */
+    public setAttribute(attr: AttributeInstruction): void {
+        this.attribute = attr;
+    }
+
+
+    /**
+        Setup instruction
+     */
+    public setup(): void {
+
+        this.expressions.forEach((expr) => {
+            let instruction = expr.instruction.replace("{{", "").replace("}}", "");
+
+            expr.value = this.findValue(instruction, this._data);
+        });
+
+        if (this.attribute != null) {
+            this.attribute.setNode(this.node);
+            this.attribute.setData(this._data);
+            this.attribute.setup();
+        }
+
+        this.map();
+    };
 }
 
 
@@ -430,75 +709,103 @@ class ElementStringInterpolation extends StringInterpolationInstruction {
     Attribute
  */
 
+
 class AttributeInstruction extends Instruction {
 
+    public attributes: Array<Attribute> = [];
+
+    constructor(public node: Node, data?: any) {
+        super(node, data);
+    }
+
+
+    public addAttribute(attr: Attribute): void {
+        this.attributes.push(attr);
+    }
+
+    get element(): HTMLElement {
+        return this.node as HTMLElement;
+    }
+
+    public setup(): void {
+
+        this.attributes.forEach(attr => {
+            attr.apply(this.node);
+        });
+    }
+}
+
+
+class Attribute {
+
     public attr = {
-        name: null,
-        htmlName: null,
-        expression: null,
+        name: "",
+        htmlName: "",
+        instruction: "",
         value: null
     };
 
     private _isStringInterpolation: boolean = false;
-    private _strIterpolationExpressions: Array<IStringInterpolationExpression> = [];
+    private _strIterpolationExpressions: Array<IStringInterpolationInstruction> = [];
 
-    constructor(public node: Node, attrName: string, data?: any) {
-        super(node, data);
-
+    constructor(public instr: AttributeInstruction, attrName: string) {
         this.attr = {
             name: attrName,
             htmlName: attrName.substr(1, (attrName.length - 2)),
-            expression: this.node.attributes.getNamedItem(attrName).nodeValue,
+            instruction: this.instr.element.attributes.getNamedItem(attrName).nodeValue,
             value: null
         };
     }
 
     /**
-        Setup instruction
+        Apply attribute
      */
-    public setup(node?: Node): void {
+    public apply(node: Node): void {
 
-        if (this.attr.expression.indexOf("{{") > -1 && this.attr.expression.indexOf("}}") > -1) {
+        if (this.attr.instruction.indexOf("{{") > -1 && this.attr.instruction.indexOf("}}") > -1) {
 
             this._isStringInterpolation = true;
-            this.initStringInterpolationExpressions(this.attr.expression, this._strIterpolationExpressions);
+            this.instr.initStringInterpolationExpressions(this.attr.instruction, this._strIterpolationExpressions);
 
             this._strIterpolationExpressions.forEach((expr) => {
-                let segments = expr.expression.replace("{{", "").replace("}}", "").split(".");
-                expr.value = this.findValue(segments, this._data);
+                let instruction = expr.instruction.replace("{{", "").replace("}}", "");
+                expr.value = this.instr.findValue(instruction, this.instr.getData());
             });
         }
         else {
-            let segments = this.attr.expression.split(".");
-            this.attr.value = this.findValue(segments, this._data);
+            this.attr.value = this.instr.findValue(this.attr.instruction, this.instr.getData());
         }
 
         this.map(node);
     }
 
     /**
-        Map instruction to its node or to a specific node
+        Map attribute 
      */
-    private map(node?: Node): void {
+    private map(node: Node): void {
+
         let attr: Attr = document.createAttribute(this.attr.htmlName);
-        let n = node ? node : this.node;
 
-        if (this._isStringInterpolation) {
-            let value: string = n.attributes.getNamedItem(this.attr.name).value;
+        let element = node as HTMLElement;
 
-            this._strIterpolationExpressions.forEach((exp) => {
-                value = value.replace(exp.expression, exp.value);
-            });
+        if (element.attributes.getNamedItem(this.attr.name)) {
+            if (this._isStringInterpolation) {
+                let value: string = element.attributes.getNamedItem(this.attr.name).value;
 
-            attr.value = value;
+                this._strIterpolationExpressions.forEach((exp) => {
+                    value = value.replace(exp.instruction, exp.value);
+                });
+
+                attr.value = value;
+            }
+
+            else {
+                attr.value = element.attributes.getNamedItem(this.attr.name).value.replace(this.attr.instruction, this.attr.value);
+            }
         }
 
-        else {
-            attr.value = n.attributes.getNamedItem(this.attr.name).value.replace(this.attr.expression, this.attr.value);
-        }
-
-        n.attributes.removeNamedItem(this.attr.name);
-        n.attributes.setNamedItem(attr);
+        element.attributes.setNamedItem(attr);
+        //node.attributes.removeNamedItem(this.attr.name);
     }
 }
 
@@ -520,22 +827,10 @@ class NodeInspecter {
     public isLoop(node: Node): boolean {
         if (node == null || node.nodeType != Node.ELEMENT_NODE) return;
 
-        for (var i = 0; i < node.attributes.length; i++) {
-            if (node.attributes.item(i).name == NodeInspecter.FOR_ATTR)
-                return true;
-        }
-        return false;
-    }
+        let element = node as HTMLElement;
 
-    /**
-     * Check if node representes an if statement
-     * @param node
-     */
-    public isIf(node: Node): boolean {
-        if (node == null || node.nodeType != Node.ELEMENT_NODE) return;
-
-        for (var i = 0; i < node.attributes.length; i++) {
-            if (node.attributes.item(i).name == NodeInspecter.IF_ATTR)
+        for (var i = 0; i < element.attributes.length; i++) {
+            if (element.attributes.item(i).name === NodeInspecter.FOR_ATTR)
                 return true;
         }
         return false;
@@ -563,8 +858,10 @@ class NodeInspecter {
         if (node == null || node.nodeType != node.ELEMENT_NODE)
             return false;
 
-        for (var i = 0; i < node.attributes.length; i++) {
-            if (node.attributes.item(i).name.match(NodeInspecter.ATTR_REG_EXP))
+        let element = node as HTMLElement;
+
+        for (var i = 0; i < element.attributes.length; i++) {
+            if (element.attributes.item(i).name.match(NodeInspecter.ATTR_REG_EXP))
                 return true;
         }
 
@@ -579,8 +876,10 @@ class NodeInspecter {
         if (node == null || node.nodeType != node.ELEMENT_NODE)
             return false;
 
-        for (var i = 0; i < node.attributes.length; i++) {
-            if (node.attributes.item(i).name.match(NodeInspecter.IF_ATTR))
+        let element = node as HTMLElement;
+
+        for (var i = 0; i < element.attributes.length; i++) {
+            if (element.attributes.item(i).name === NodeInspecter.IF_ATTR)
                 return true;
         }
 
@@ -610,36 +909,117 @@ class NodeInspecter {
      * @param node
      * @param instructions
      */
-    public findAttributeInstructions(node: Node, instructions: Array<Instruction>, data?: any): void {
+    public buildAttributeInstruction(node: Node, data?: any): AttributeInstruction {
         if (node == null || node.nodeType != Node.ELEMENT_NODE)
             return;
 
-        for (var i = 0; i < node.attributes.length; i++) {
-            if (node.attributes.item(i).name.match(NodeInspecter.ATTR_REG_EXP))
-                instructions.push(new AttributeInstruction(node, node.attributes.item(i).name, data));
+        let element = node as HTMLElement;
+        let instr = new AttributeInstruction(node, data);
+
+        for (var i = 0; i < element.attributes.length; i++) {
+            if (element.attributes.item(i).name.match(NodeInspecter.ATTR_REG_EXP))
+                instr.addAttribute(new Attribute(instr, element.attributes.item(i).name));
         }
+
+        return instr;
+    }
+
+    /**
+     * Check if a node is an element string interpolation
+     * @param node
+     */
+    public isElementString(node: HTMLElement): boolean {
+        return (node.childElementCount == 0 && node.textContent.match(NodeInspecter.STR_INTERPO_REG_EXP) != null);
+    }
+
+    /**
+     * Check if a node is only an attribute instruction
+     * @param node
+     */
+    public isOnlyAttribute(node: HTMLElement): boolean {
+        return (this.isAttribute(node) && !this.hasIfStatement(node) && !this.isLoop(node) && !this.isElementString(node))
     }
 }
 
 
 
 /**
-    If statement for instructions
+    If statement instruction for elements
  */
-class IfStatement {
+class IfStatementInstruction extends Instruction {
 
-    private _statement: string = null;
+    public attribute: AttributeInstruction = null;
+    public instructions: Array<Instruction> = [];
 
-    constructor(public node?: Node) {
+    public statement: string = null;
+
+    constructor(node: HTMLElement, data?: any) {
+        super(node, data);
+
+        this.statement = this.element.attributes.getNamedItem(NodeInspecter.IF_ATTR).value;
     }
 
-    public result(node?: Node): boolean {
-        let n = this.node != null ? this.node : node;
-        let statement = n.attributes.getNamedItem(NodeInspecter.IF_ATTR).value;
+    get element(): HTMLElement {
+        return this.node as HTMLElement;
+    }
 
-        return eval(statement);
+    public setup(): void {
+        let elem: HTMLElement = this.node as HTMLElement;
+
+        if (this.evaluate()) {
+
+            this.instructions.forEach((instr, i) => {
+                let nestedNode: Node = this.findNodeString(elem, instr.getNodeClone()) || this.findElement(elem, <HTMLElement>instr.getNodeClone());
+
+                instr.setNode(nestedNode);
+                instr.setData(this._data);
+                instr.setup();
+            });
+
+            if (this.attribute) {
+                this.attribute.setNode(this.node);
+                this.attribute.setData(this._data);
+                this.attribute.setup();
+            }
+
+            elem.removeAttribute(NodeInspecter.IF_ATTR);
+        }
+        else {
+            elem.remove();
+        }
+    }
+
+
+    /**
+        Evaluate if statement
+     */
+    public evaluate(): boolean {
+        let data = this.prepareDataEnvironment(this._data);
+
+
+        let func = "(function(" + data.params + "){ return " + this.statement + " })(" + data.values + ");";
+
+        return eval(func);
+    }
+
+    /**
+     * Add a new instruction
+     * @param instr
+     */
+    public addInstruction(instr: Instruction): Instruction {
+        this.instructions.push(instr);
+        return instr;
+    }
+
+    /**
+     * Add a new attribute
+     * @param attrInstr
+     */
+    public setAttribute(attr: AttributeInstruction): void {
+        this.attribute = attr;
     }
 }
+
 
 
 /**
@@ -647,35 +1027,70 @@ class IfStatement {
  */
 class LoopInstruction extends Instruction {
 
+    private _shape: HTMLElement = null;
+    private _render: HTMLElement = null;
     private _segments: Array<string> = [];
+
+
     private _params = {
-        expression: "",
-        arrayName: [],
+        statement: "",
+        loopExpression: "",
+        wrap: false,
         varName: ""
     };
 
     public _ni: NodeInspecter = null;
-    public _instructions: Array<Instruction> = [];
-    public _attributes: Array<AttributeInstruction> = [];
+    public instructions: Array<Instruction> = [];
+    public instructionsToApply: Array<Instruction> = [];
+    public attribute: AttributeInstruction = null;
 
 
-    constructor(node: Node, data?: any) {
+    constructor(node: HTMLElement, data?: any) {
         super(node, data);
 
-        let expression = node.attributes.getNamedItem(NodeInspecter.FOR_ATTR).value.trim();
+        this.init();
+        this.clone();
+    }
 
-        this._segments = expression.split(":");
 
-        if (this._segments.length != 2)
-            throw new Error("Loop : Incorrect syntax, it should be like [*for]=\"arrayName:varName\"");
+    public clone(): void {
+        this._render = this.node.cloneNode() as HTMLElement;
+    }
+
+
+    get element(): HTMLElement {
+        return this.node as HTMLElement;
+    }
+
+    /**
+        Init
+     */
+    private init(): void {
+        let expression = this.element.attributes.getNamedItem(NodeInspecter.FOR_ATTR).value.trim().split("|");
+
+        let loopExpression = expression[0];
+        let option = expression[1];
+
+        this._segments = loopExpression.split(":");
+
 
         this._params = {
-            expression: expression,
-            arrayName: this._segments[0].split("."),
+            statement: this._segments[0],
+            loopExpression: loopExpression,
+            wrap: option == "wrap" ? true : false,
             varName: this._segments[1]
         };
 
+
+        if (this._params.varName == "$index")
+            throw new Error("Loops can't export \"$index\" var name, it's a reserved keyword.");
+
         this._ni = new NodeInspecter();
+
+        /**
+            Remove loop attribute
+        */
+        //this.node.attributes.removeNamedItem(NodeInspecter.FOR_ATTR);
     }
 
 
@@ -684,56 +1099,18 @@ class LoopInstruction extends Instruction {
      * @param instruction
      */
     public addInstruction(instruction: Instruction): Instruction {
-        this._instructions.push(instruction);
+        this.instructions.push(instruction);
         return instruction;
     }
 
     /**
-     * Add attribute to loop, this attribute will be applied to this loop's Element
+     * Set attribute to loop, this attribute will be applied to this loop's Element
      * @param attribute
      */
-    public addAttribute(attribute: AttributeInstruction): AttributeInstruction {
-        this._attributes.push(attribute);
-        return attribute;
+    public setAttribute(attribute: AttributeInstruction): void {
+        this.attribute = attribute;
     }
 
-    /**
-     * Find a specific node
-     * @param nodes
-     * @param target
-     */
-    public findNodeString(elem: HTMLElement, target: Node): Node {
-
-        for (var i = 0; i < elem.childNodes.length; i++) {
-            let node = elem.childNodes.item(i);
-
-            if (node.isEqualNode(target))
-                return node;
-
-            if (node instanceof HTMLElement)
-                return this.findNodeString(node, target);
-        }
-    }
-
-    /**
-     * Find a specific element
-     * @param elems
-     * @param target
-     */
-    public findElement(container: HTMLElement, target: HTMLElement): HTMLElement {
-        if (container != null && container.isEqualNode(target))
-            return container;
-
-        let elems = container.querySelectorAll("*");
-        for (var i = 0; i < elems.length; i++) {
-            let elem = <HTMLElement>elems.item(i);
-
-            if (elem.isEqualNode(target)) {
-                return elem;
-            }
-        }
-        return null;
-    }
 
     /**
      * Loop through all instructions and execute them
@@ -741,79 +1118,107 @@ class LoopInstruction extends Instruction {
      * @param parentContainer
      * @param data
      */
-    private loop(loopContainer: HTMLElement, parentContainer: HTMLElement, data: any): void {
-        let array = this.findArray(this._params.arrayName, data);
+    private loop(data: any): void {
+
+        let array = this.findArray(this._params.statement, data);
+
 
         if (array != undefined) {
 
             array.forEach((item, index) => {
+                let instrs: Array<Instruction> = [];
 
-                let data: any = { "#index": index };
+                if (Array.isArray(item)) {
+                    data[this._params.varName] = {
+                        array: item,
+                        $index: index
+                    };
+                }
+                else {
+                    data[this._params.varName] = item;
+                    data[this._params.varName]["$index"] = index;
+                }
 
-                data[this._params.varName] = item
 
-                let container = <HTMLElement>loopContainer.cloneNode(true);
+                let shape = this.node.cloneNode(true) as HTMLElement;
 
-                this._instructions.forEach((instr, index) => {
+                this.instructions.forEach((instr, index) => {
 
-                    if (instr instanceof LoopInstruction) {
-                        // find loop's container
-                        let elem: HTMLElement = this.findElement(container, <HTMLElement>instr.node);
-                        // prepare data for this loop
-                        let data: any = {};
-                        data[this._params.varName] = item;
+                    let node: Node = this.findElement(shape, <HTMLElement>instr.getNodeClone()) || this.findNodeString(shape, instr.getNodeClone());
 
-                        /**
-                            Apply loop's attribute instructions
-                        */
-                        //instr._attributes.forEach((attr) => {
-                        //    attr.setData(data);
-                        //    attr.setNode(elem);
-                        //    attr.setup();
-                        //});
+                    let newInstr: Instruction = null;
 
-                        // loop through all instructions
-                        console.log(data);
-                        instr.loop(elem, container, data);
+                    if (instr instanceof IfStatementInstruction) {
+                        let ifInstr = new IfStatementInstruction(<HTMLElement>node, data);
+
+                        ifInstr.instructions = instr.instructions;
+                        ifInstr.attribute = instr.attribute;
+
+                        newInstr = ifInstr;
+                    }
+                    else if (instr instanceof LoopInstruction) {
+                        instr.setNode(node);
+                        instr.clone();
+                        instr.loop(data);
                     }
                     else if (instr instanceof NodeStringInterpolation) {
-                        let foundedNode = this.findNodeString(container, <HTMLElement>instr.node);
-
-                        instr.setData(data);
-                        instr.setup(foundedNode);
+                        newInstr = new NodeStringInterpolation(node, data);
                     }
-                    else if (instr instanceof ElementStringInterpolation || instr instanceof AttributeInstruction) {
-                        let foundedNode = this.findElement(container, <HTMLElement>instr.node);
+                    else if (instr instanceof ElementStringInterpolation) {
+                        newInstr = new ElementStringInterpolation(node, data);
+                        newInstr.setData(data);
+                    }
+                    else if (instr instanceof AttributeInstruction) {
+                        let attrInstr = new AttributeInstruction(node, data);
+                        attrInstr.attributes = instr.attributes;
 
-                        instr.setData(data);
-                        instr.setup(foundedNode);
+                        newInstr = attrInstr;
                     }
 
-                    instr.mapped = true;
+                    if (newInstr != null)
+                        instrs.push(newInstr);
                 });
 
-                parentContainer.insertBefore(container, loopContainer);
+
+                /**
+                 * Apply instructions
+                 * */
+
+                instrs.forEach(instr => {
+                    instr.setup();
+                });
+
+
+                /**
+                    Insert content    
+                */
+                if (this._params.wrap)
+                    this.node.parentElement.insertBefore(shape, this.node);
+                else
+                    this._render.innerHTML += shape.innerHTML;
+
             });
 
-            loopContainer.remove();
+            /**
+             * If element is wraped, then remove it
+             * */
+            if (this._params.wrap) {
+                let elemToRemove = this.findElement(<HTMLElement>this.node, <HTMLElement>this.getNodeClone());
+                if (elemToRemove != null)
+                    elemToRemove.remove();
+            }
 
-        } else {
-
-            let loop = this.findElement(parentContainer, <HTMLElement>this.node);
-
-            if (loop)
-                loop.remove();
+            (<HTMLElement>this.node).innerHTML = this._render.innerHTML;
         }
+
+
     }
 
     /**
      * Setup instruction
      * @param parent
      */
-    public setup(parent?: HTMLElement): void {
-        let container: HTMLElement = (<HTMLElement>this.node);
-        let pcontainer: HTMLElement = parent ? parent : container.parentElement;
-
-        this.loop(container, pcontainer, this._data);
+    public setup(): void {
+        this.loop(this._data);
     }
 }
