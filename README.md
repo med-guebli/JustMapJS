@@ -2,7 +2,9 @@
 
 JustMap is a javascript library that provides functions to map a JSON object to a view.
 
-### Prerequisites
+### Basic syntax
+
+This is a simple example to how to use JustMap
 
 #### HTML side
 
