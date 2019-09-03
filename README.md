@@ -37,27 +37,29 @@ document.body.append(domModelMapped);
 Med : 23/06/1990
 ```
 
-## String Interpolation
+## Template Syntax
+
+### String Interpolation
 
 ```
 {{ attribute_name }}
 ```
 
-## Attribute binding
+### Attribute binding
 Attribute binding is used to bind element's attributes to values
 
 ```
 <input type="text" name="username" [value]="username" />
 ```
 
-## If statement
+### If statement
 If statement is used to show/hide an HTML element based on a condition 
 
 ```
 <div [*if]="username == 'Med'">Some content here</div>
 ```
 
-## For statement
+### For statement
 For/loop statement is used iterate over an array
 
 ```
@@ -66,7 +68,7 @@ For/loop statement is used iterate over an array
 </div>
 ```
 
-# Full example
+### Full example
 ```
 <h3> Username : {{ username }}</h3>
 <h3> Birthdate : {{ birthdate }}</h3>
