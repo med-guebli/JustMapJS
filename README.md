@@ -65,3 +65,19 @@ For/loop statement is used iterate over an array
     <img [src]="photo" />
 </div>
 ```
+
+# Full example
+```
+<h3> Username : {{ username }}</h3>
+<h3> Birthdate : {{ birthdate }}</h3>
+
+<div [*if]="!photos || photos.length == 0" class="alert alert-info">
+    No photos were found for this user
+</div>
+
+<div [*if]="photos && photos.length > 0">
+    <div [*for]="photos:photo">
+        <img [src]="photo" />
+    </div>
+</div>
+```
