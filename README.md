@@ -1,6 +1,6 @@
 # JustMapJS
 
-JustMap is a javascript library that provides a function to map a JSON object to a view.
+JustMap is a javascript library to map JSON objects to views.
 
 ## Getting Started
 
