@@ -21,7 +21,8 @@ class JustMap {
 
 
 /**
-    Instructions builder
+    Instructions builder 
+    To build all instructions
  */
 class InstructionsBuilder {
 
