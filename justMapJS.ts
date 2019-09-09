@@ -4,7 +4,7 @@
 class JustMap {
 
     public static map(element: HTMLElement, obj: any, mappers?: any): HTMLElement {
-        if (!element || !obj)/
+        if (!element || !obj)
             return;
 
         let instructionsBuilder = new InstructionsBuilder();
